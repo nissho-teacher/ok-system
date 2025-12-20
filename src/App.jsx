@@ -69,15 +69,9 @@ function App() {
     if (!isConnected) return
 
     const newIsOK = !isOK
-    let newCount
-    if (isOK) {
-      newCount = count + 1
-    } else {
-      newCount = count - 1
-    }
 
-    // サーバーに新しいカウンターと状態を送信
-    socket.emit('update-counter', { newCount, isOK: newIsOK })
+    // サーバーに新しい状態を送信（カウンターはサーバー側で計算）
+    socket.emit('update-counter', { isOK: newIsOK })
     setIsOK(newIsOK)
   }
 

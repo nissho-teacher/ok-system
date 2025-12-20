@@ -18,9 +18,19 @@ const io = new Server(httpServer, {
     }
 });
 
-let sharedCounter = 0;
 // 各クライアントの状態を管理（true=OK, false=Cancel）
 const clientStates = new Map();
+
+// クライアントの状態からカウンターを計算する関数
+function calculateCounter() {
+    let counter = 0;
+    for (const [socketId, isOK] of clientStates.entries()) {
+        if (!isOK) { // Cancel状態の場合
+            counter++;
+        }
+    }
+    return counter;
+}
 
 io.on('connection', (socket) => {
     console.log('ユーザーが接続しました:', socket.id);
@@ -28,12 +38,13 @@ io.on('connection', (socket) => {
     // 新しいクライアントの状態をOKで初期化
     clientStates.set(socket.id, true);
 
-    // 新しいクライアントに現在のカウンターを送信
-    socket.emit('counter-update', sharedCounter);
+    // 現在のカウンターを計算して送信
+    const currentCounter = calculateCounter();
+    socket.emit('counter-update', currentCounter);
 
     // 接続数を計算
     const activeConnections = io.sockets.sockets.size;
-    console.log('現在の接続数:', activeConnections);
+    console.log('現在の接続数:', activeConnections, 'カウンター:', currentCounter);
 
     // 新しいクライアントに接続数を送信
     socket.emit('active-users', activeConnections);
@@ -42,11 +53,13 @@ io.on('connection', (socket) => {
 
     // カウンター更新を受信
     socket.on('update-counter', (data) => {
-        sharedCounter = data.newCount;
         // クライアントの状態を更新
         clientStates.set(socket.id, data.isOK);
+        // 状態から新しいカウンターを計算
+        const newCounter = calculateCounter();
         // 全クライアントに新しいカウンターをブロードキャスト
-        io.emit('counter-update', sharedCounter);
+        io.emit('counter-update', newCounter);
+        console.log('カウンター更新:', socket.id, data.isOK ? 'OK' : 'Cancel', '新カウンター:', newCounter);
     });
 
     // 再接続時の状態同期
@@ -59,29 +72,26 @@ io.on('connection', (socket) => {
     // クライアントからの状態リクエスト
     socket.on('request-state', () => {
         const activeConnections = io.sockets.sockets.size;
-        socket.emit('counter-update', sharedCounter);
+        const currentCounter = calculateCounter();
+        socket.emit('counter-update', currentCounter);
         socket.emit('active-users', activeConnections);
-        console.log('状態をリクエストされました:', socket.id, '接続数:', activeConnections);
+        console.log('状態をリクエストされました:', socket.id, '接続数:', activeConnections, 'カウンター:', currentCounter);
     });
 
     socket.on('disconnect', () => {
         console.log('ユーザーが切断しました:', socket.id);
 
-        // クライアントがCancel状態で切断した場合、カウンターを-1して元に戻す
-        const clientState = clientStates.get(socket.id);
-        if (clientState === false) {
-            sharedCounter -= 1;
-            io.emit('counter-update', sharedCounter);
-            console.log('Cancel状態で切断されたため、カウンターを調整:', sharedCounter);
-        }
-
         // クライアントの状態を削除
         clientStates.delete(socket.id);
+
+        // 状態から新しいカウンターを計算
+        const newCounter = calculateCounter();
+        io.emit('counter-update', newCounter);
 
         // 切断後の接続数を全クライアントに送信
         const activeConnections = io.sockets.sockets.size;
         io.emit('active-users', activeConnections);
-        console.log('現在の接続数:', activeConnections);
+        console.log('現在の接続数:', activeConnections, 'カウンター:', newCounter);
     });
 });
 
